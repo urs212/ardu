@@ -3,54 +3,97 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Arduino Sensor Data</title>
-  <style>
-    body { font-family: Arial, sans-serif; text-align: center; }
-    .status { font-size: 20px; margin-top: 20px; }
-    button { padding: 10px; font-size: 16px; }
-  </style>
+  <title>Arduino Web Serial Communication</title>
 </head>
 <body>
-  <h1>Arduino Sensor Data</h1>
+  <h1>Arduino Serial Communication</h1>
   <button id="connectButton">Connect to Arduino</button>
-  <div class="status" id="status">Waiting for data...</div>
+  <p id="status">Status: Not connected</p>
 
   <script>
     let port;
     let reader;
-    let decoder = new TextDecoder();
+    let writer;
+    let decoder = new TextDecoderStream();
     let inputDone;
+    let outputDone;
     let inputStream;
+    let outputStream;
 
-    const connectButton = document.getElementById('connectButton');
-    const statusDiv = document.getElementById('status');
-
-    // Connect to Arduino
-    connectButton.addEventListener('click', async () => {
+    async function connectToArduino() {
       try {
+        // 시리얼 포트 요청
         port = await navigator.serial.requestPort();
         await port.open({ baudRate: 9600 });
 
-        inputStream = port.readable;
-        inputDone = readData();
+        // 시리얼 연결 후 상태 업데이트
+        document.getElementById("status").innerText = "Status: Connected to Arduino";
 
-        statusDiv.textContent = 'Connected to Arduino!';
-        connectButton.disabled = true;
+        // 읽기/쓰기 스트림 설정
+        inputStream = port.readable.pipeThrough(decoder);
+        inputDone = inputStream.getReader();
+        outputStream = port.writable;
+        writer = outputStream.getWriter();
+
+        // 데이터 읽기 시작
+        readData();
       } catch (e) {
-        statusDiv.textContent = 'Connection failed: ' + e;
+        document.getElementById("status").innerText = "Status: Error connecting to Arduino";
+        console.error(e);
       }
-    });
+    }
 
-    // Read data from Arduino
     async function readData() {
-      const reader = inputStream.getReader();
       while (true) {
-        const { value, done } = await reader.read();
+        // 데이터를 읽고 처리하는 부분
+        const { value, done } = await inputDone.read();
         if (done) {
+          inputDone.releaseLock();
           break;
         }
+        
+        const data = value.trim();
+        console.log(data);
 
-        const data = decoder.decode(value, { stream: true });
-        console.log('Data from Arduino:', data);
-        handleSensorData(data);
-  
+        // 데이터를 받아서 비프음 속도 조절
+        handleData(data);
+      }
+    }
+
+    function handleData(data) {
+      // 데이터에서 PIR 상태와 거리 값 추출
+      const [pirData, distanceData] = data.split(',');
+
+      const pirState = pirData.split(':')[1];  // PIR 상태 (1 = 감지, 0 = 미감지)
+      const distance = parseInt(distanceData.split(':')[1]);  // 거리 (cm)
+
+      if (pirState == 1) {
+        // 사람 감지된 경우 비프음 속도 변경
+        const beepSpeed = mapDistanceToBeepSpeed(distance);
+        playBeep(beepSpeed);
+      }
+    }
+
+    // 거리 값을 기반으로 비프음 속도를 결정
+    function mapDistanceToBeepSpeed(distance) {
+      if (distance < 10) {
+        return 50;  // 가까우면 빠르게
+      } else if (distance < 20) {
+        return 100;
+      } else {
+        return 200;  // 멀리 있으면 느리게
+      }
+    }
+
+    // 비프음 재생 (소리 속도 조절)
+    function playBeep(speed) {
+      let beep = new Audio('data:audio/wav;base64,...');
+      beep.playbackRate = speed / 100;  // 속도 조정
+      beep.play();
+    }
+
+    // 연결 버튼 클릭 시
+    document.getElementById('connectButton').addEventListener('click', connectToArduino);
+  </script>
+</body>
+</html>
