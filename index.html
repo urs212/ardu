@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Arduino Sensor Data</title>
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; }
+    .status { font-size: 20px; margin-top: 20px; }
+    button { padding: 10px; font-size: 16px; }
+  </style>
+</head>
+<body>
+  <h1>Arduino Sensor Data</h1>
+  <button id="connectButton">Connect to Arduino</button>
+  <div class="status" id="status">Waiting for data...</div>
+
+  <script>
+    let port;
+    let reader;
+    let decoder = new TextDecoder();
+    let inputDone;
+    let inputStream;
+
+    const connectButton = document.getElementById('connectButton');
+    const statusDiv = document.getElementById('status');
+
+    // Connect to Arduino
+    connectButton.addEventListener('click', async () => {
+      try {
+        port = await navigator.serial.requestPort();
+        await port.open({ baudRate: 9600 });
+
+        inputStream = port.readable;
+        inputDone = readData();
+
+        statusDiv.textContent = 'Connected to Arduino!';
+        connectButton.disabled = true;
+      } catch (e) {
+        statusDiv.textContent = 'Connection failed: ' + e;
+      }
+    });
+
+    // Read data from Arduino
+    async function readData() {
+      const reader = inputStream.getReader();
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) {
+          break;
+        }
+
+        const data = decoder.decode(value, { stream: true });
+        console.log('Data from Arduino:', data);
+        handleSensorData(data);
+  
